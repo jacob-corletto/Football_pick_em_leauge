@@ -25,7 +25,7 @@ const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     score: { type: Number, default: 0 },
-    isAdmin: { type: Boolean, default: false } // Add isAdmin field
+    isAdmin: { type: Boolean, default: false }
 });
 
 const User = mongoose.model('User', userSchema);
@@ -34,7 +34,7 @@ const gameSchema = new mongoose.Schema({
     homeTeam: String,
     awayTeam: String,
     week: Number,
-    winner: String // This will be set after the game is played
+    winner: String
 });
 
 const Game = mongoose.model('Game', gameSchema);
@@ -42,7 +42,8 @@ const Game = mongoose.model('Game', gameSchema);
 const pickSchema = new mongoose.Schema({
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     game: { type: mongoose.Schema.Types.ObjectId, ref: 'Game' },
-    winner: String, 
+    winner: String,
+    week: Number // Add week field
 });
 
 const Pick = mongoose.model('Pick', pickSchema);
@@ -154,11 +155,31 @@ app.get('/api/games', authenticateToken, async (req, res) => {
     }
 });
 
+// Check if picks have been submitted for a specific week
+app.get('/api/picks/week/:week', authenticateToken, async (req, res) => {
+    try {
+        const { week } = req.params;
+        const picks = await Pick.find({ user: req.user.userId, week });
+        res.send(picks);
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Server error');
+    }
+});
+
 // Submit pick
 app.post('/api/picks', authenticateToken, async (req, res) => {
     try {
         const { gameId, winner } = req.body;
-        const pick = new Pick({ user: req.user.userId, game: gameId, winner });
+        const game = await Game.findById(gameId);
+        if (!game) {
+            return res.status(404).send('Game not found');
+        }
+        const existingPick = await Pick.findOne({ user: req.user.userId, week: game.week });
+        if (existingPick) {
+            return res.status(400).send('Picks for this week have already been submitted');
+        }
+        const pick = new Pick({ user: req.user.userId, game: gameId, winner, week: game.week });
         await pick.save();
         res.status(201).send('Pick submitted');
     } catch (error) {
